@@ -114,7 +114,6 @@ local function format_qf_entries(opts)
   return formatted_entries
 end
 
-
 --- Set up the pretty-quickfix.nvim plugin
 --- @param opts PrettyQuickfixConfig|nil
 --- @return nil
