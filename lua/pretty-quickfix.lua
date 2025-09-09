@@ -200,14 +200,6 @@ M.setup = function(opts)
 
       update_qf_display()
 
-      vim.api.nvim_create_autocmd({ 'QuickFixCmdPost' }, {
-        callback = function()
-          if vim.api.nvim_buf_is_valid(buf) then
-            update_qf_display()
-          end
-        end,
-      })
-
       -- Move cursor to avoid icon area
       vim.api.nvim_create_autocmd({ 'CursorMoved', 'CursorMovedI' }, {
         buffer = buf,
