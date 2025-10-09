@@ -48,7 +48,7 @@ local function get_icon(filename, ext)
     local icon, icon_hl = devicons.get_icon(filename, ext, { default = true })
     icons_cache[key] = {
       icon = icon or '󰈚',
-      icon_hl = icon_hl or 'DevIconDefault'
+      icon_hl = icon_hl or 'DevIconDefault',
     }
   end
   return icons_cache[key].icon, icons_cache[key].icon_hl
@@ -105,7 +105,7 @@ local function format_qf_entries(opts)
           icon_hl = icon_hl,
           filename = filename,
           line_part = line_part,
-          content = content
+          content = content,
         }
       end
     end
@@ -168,14 +168,14 @@ M.setup = function(opts)
           -- Icon highlighting
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
             end_col = #formatted.icon + 1,
-            hl_group = formatted.icon_hl
+            hl_group = formatted.icon_hl,
           })
 
           -- Filename highlighting
           local filename_start = #formatted.icon + 1
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, filename_start, {
             end_col = filename_start + #formatted.filename,
-            hl_group = 'Function'
+            hl_group = 'Function',
           })
 
           -- Line number highlighting
@@ -183,7 +183,7 @@ M.setup = function(opts)
             local line_start = filename_start + #formatted.filename
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, line_start, {
               end_col = line_start + #formatted.line_part,
-              hl_group = 'Comment'
+              hl_group = 'Comment',
             })
           end
 
@@ -192,7 +192,7 @@ M.setup = function(opts)
             local content_start = filename_start + #formatted.filename + #formatted.line_part
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start, {
               end_col = content_start + #formatted.content,
-              hl_group = 'Normal'
+              hl_group = 'Normal',
             })
           end
         end
@@ -205,10 +205,10 @@ M.setup = function(opts)
         buffer = buf,
         callback = function()
           local cursor = vim.api.nvim_win_get_cursor(0)
-          local line_content = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
+          local line_content = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ''
 
           -- Find where the actual filename starts (after icon and space)
-          local icon_and_space_pattern = "^[^ ]* "
+          local icon_and_space_pattern = '^[^ ]* '
           local _, icon_end = line_content:find(icon_and_space_pattern)
           local min_col = icon_end or 2
 
