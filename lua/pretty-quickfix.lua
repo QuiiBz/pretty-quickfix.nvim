@@ -2,12 +2,14 @@ local M = {}
 
 --- @class PrettyQuickfixConfig
 --- @field show_line_numbers boolean|nil Whether to show line numbers in the quickfix list (default: true)
+--- @field treesitter_highlighting boolean|nil Whether to use treesitter for syntax highlighting of content (default: true)
 --- @field format 'filename'|'filepath'|nil Display entries with the file name or file path (default: 'filepath')
 --- @field files_list_format 'filename'|'filepath'|nil Same as the above but when all entries are files (default: 'filepath')
 
 --- @type PrettyQuickfixConfig
 local DEFAULT_OPTIONS = {
   show_line_numbers = true,
+  treesitter_highlighting = true,
   format = 'filepath',
   files_list_format = 'filepath',
 }
@@ -56,7 +58,7 @@ end
 
 --- Format quickfix list entries for display
 --- @param opts PrettyQuickfixConfig
---- @return table<number, { icon: string, icon_hl: string, filename: string, line_part: string, content: string }> formatted_entries
+--- @return table<number, { icon: string, icon_hl: string, filename: string, line_part: string, content: string, bufnr: number, filetype: string|nil, content_start: integer }> formatted_entries
 local function format_qf_entries(opts)
   local qf_list = vim.fn.getqflist()
   local formatted_entries = {}
@@ -100,12 +102,16 @@ local function format_qf_entries(opts)
           filename = opts.format == 'filename' and filename or bufname
         end
 
+        local filetype = not is_files_list and vim.filetype.match({ filename = bufname })
+
         formatted_entries[i] = {
           icon = icon,
           icon_hl = icon_hl,
           filename = filename,
           line_part = line_part,
           content = content,
+          bufnr = item.bufnr,
+          filetype = filetype,
         }
       end
     end
@@ -187,13 +193,97 @@ M.setup = function(opts)
             })
           end
 
-          -- Content highlightin
+          -- Store content position for batch treesitter highlighting
           if #formatted.content > 0 then
             local content_start = filename_start + #formatted.filename + #formatted.line_part
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start, {
-              end_col = content_start + #formatted.content,
-              hl_group = 'Normal',
-            })
+            formatted.content_start = content_start
+
+            -- Fallback highlighting if treesitter is disabled or no filetype
+            if not opts.treesitter_highlighting then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start, {
+                end_col = content_start + #formatted.content,
+                hl_group = 'Normal',
+              })
+            end
+          end
+        end
+
+        -- Batch process treesitter highlighting by filetype
+        if opts.treesitter_highlighting then
+          local by_filetype = {}
+          for i, formatted in pairs(formatted_entries) do
+            if #formatted.content > 0 and formatted.filetype then
+              if not by_filetype[formatted.filetype] then
+                by_filetype[formatted.filetype] = {}
+              end
+              table.insert(by_filetype[formatted.filetype], {
+                index = i,
+                formatted = formatted,
+              })
+            end
+          end
+
+          -- Process each filetype group
+          for filetype, entries in pairs(by_filetype) do
+            local has_parser = pcall(vim.treesitter.language.get_lang, filetype)
+            if has_parser then
+              -- Get the highlight query once for this filetype
+              local ok_query, query = pcall(vim.treesitter.query.get, filetype, 'highlights')
+              if ok_query and query then
+                -- Process each entry with this filetype
+                for _, entry in ipairs(entries) do
+                  local i = entry.index
+                  local formatted = entry.formatted
+
+                  -- Parse content using treesitter string parser
+                  local content_text = formatted.content:match('^%s*(.*)$')
+                  local ok, parser = pcall(vim.treesitter.get_string_parser, content_text, filetype)
+
+                  if ok and parser then
+                    local tree = parser:parse()[1]
+                    if tree then
+                      local root = tree:root()
+
+                      -- Apply highlights from treesitter using theme colors
+                      for id, node in query:iter_captures(root, content_text, 0, 1) do
+                        local capture_name = query.captures[id]
+
+                        -- Build highlight group name (Neovim 0.8+ style)
+                        local hl_group = '@' .. capture_name .. '.' .. filetype
+
+                        -- Fallback to generic @capture if filetype-specific doesn't exist
+                        if vim.fn.hlexists(hl_group) == 0 then
+                          hl_group = '@' .. capture_name
+                        end
+
+                        local start_row, start_col, _, end_col = node:range()
+                        if start_row == 0 and vim.fn.hlexists(hl_group) ~= 0 then
+                          -- Adjust for the position in the quickfix buffer
+                          local hl_start = formatted.content_start + start_col + 1 -- +1 for leading space
+                          local hl_end = formatted.content_start + end_col + 1
+
+                          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, hl_start, {
+                            end_col = hl_end,
+                            hl_group = hl_group,
+                            priority = 100,
+                          })
+                        end
+                      end
+                    end
+                  end
+                end
+              end
+            end
+          end
+
+          -- Apply fallback highlighting for content without treesitter
+          for i, formatted in pairs(formatted_entries) do
+            if #formatted.content > 0 and not formatted.filetype then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, formatted.content_start, {
+                end_col = formatted.content_start + #formatted.content,
+                hl_group = 'Normal',
+              })
+            end
           end
         end
       end
