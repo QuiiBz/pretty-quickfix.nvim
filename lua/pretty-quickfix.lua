@@ -3,6 +3,7 @@ local M = {}
 --- @class PrettyQuickfixConfig
 --- @field show_line_numbers boolean|nil Whether to show line numbers in the quickfix list (default: true)
 --- @field treesitter_highlighting boolean|nil Whether to use treesitter for syntax highlighting of content (default: true)
+--- @field highlight_matches boolean|nil Whether to highlight the background of matched columns (default: true)
 --- @field format 'filename'|'filepath'|nil Display entries with the file name or file path (default: 'filepath')
 --- @field files_list_format 'filename'|'filepath'|nil Same as the above but when all entries are files (default: 'filepath')
 
@@ -10,6 +11,7 @@ local M = {}
 local DEFAULT_OPTIONS = {
   show_line_numbers = true,
   treesitter_highlighting = true,
+  highlight_matches = true,
   format = 'filepath',
   files_list_format = 'filepath',
 }
@@ -58,7 +60,7 @@ end
 
 --- Format quickfix list entries for display
 --- @param opts PrettyQuickfixConfig
---- @return table<number, { icon: string, icon_hl: string, filename: string, line_part: string, content: string, bufnr: number, filetype: string|nil, content_start: integer }> formatted_entries
+--- @return table<number, { icon: string, icon_hl: string, filename: string, line_part: string, content: string, bufnr: number, filetype: string|nil, content_start: integer, col_start: integer|nil, col_end: integer|nil }> formatted_entries
 local function format_qf_entries(opts)
   local qf_list = vim.fn.getqflist()
   local formatted_entries = {}
@@ -90,7 +92,15 @@ local function format_qf_entries(opts)
 
         local icon, icon_hl = get_icon(filename, ext)
         local line_part = ':' .. item.lnum
-        local content = item.text and (' ' .. item.text:gsub('^%s+', '')) or ''
+
+        -- Track how much leading whitespace was trimmed
+        local trimmed_offset = 0
+        local content = ''
+        if item.text then
+          local leading_ws = item.text:match('^%s*')
+          trimmed_offset = #leading_ws
+          content = ' ' .. item.text:gsub('^%s+', '')
+        end
 
         -- Hide line numbers and content if all entries are files
         -- and show the filename as the filepath without leading space
@@ -104,6 +114,15 @@ local function format_qf_entries(opts)
 
         local filetype = not is_files_list and vim.filetype.match({ filename = bufname })
 
+        -- Extract column range if end_col is set (indicates a range)
+        -- Adjust for trimmed whitespace: columns are 1-based in original text
+        local col_start = nil
+        local col_end = nil
+        if item.col > 0 and item.end_col > 0 and item.end_col > item.col then
+          col_start = item.col - trimmed_offset
+          col_end = item.end_col - trimmed_offset
+        end
+
         formatted_entries[i] = {
           icon = icon,
           icon_hl = icon_hl,
@@ -112,6 +131,8 @@ local function format_qf_entries(opts)
           content = content,
           bufnr = item.bufnr,
           filetype = filetype,
+          col_start = col_start,
+          col_end = col_end,
         }
       end
     end
@@ -283,6 +304,30 @@ M.setup = function(opts)
                 end_col = formatted.content_start + #formatted.content,
                 hl_group = 'Normal',
               })
+            end
+          end
+        end
+
+        -- Highlight matched column ranges with background color
+        if opts.highlight_matches then
+          for i, formatted in pairs(formatted_entries) do
+            if formatted.col_start and formatted.col_end and #formatted.content > 0 then
+              -- Calculate the position in the displayed content
+              -- col_start is 1-based, we need to adjust for the content position
+              local match_start = formatted.content_start + formatted.col_start
+              local match_end = formatted.content_start + formatted.col_end
+
+              -- Make sure we don't go beyond the content bounds
+              local content_end = formatted.content_start + #formatted.content
+              if match_start < content_end then
+                match_end = math.min(match_end, content_end)
+
+                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, match_start, {
+                  end_col = match_end,
+                  hl_group = 'Search',
+                  priority = 200, -- Higher priority than treesitter highlights
+                })
+              end
             end
           end
         end

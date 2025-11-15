@@ -3,7 +3,7 @@
 I wanted a prettier quickfix window, without any extra features. This plugin does just that.
 
 - Uses `nvim-web-devicons` to display an icon for each entries
-- De-cluttered output with optional treesitter syntax highlighting
+- De-cluttered output with optional treesitter syntax and matches highlighting
 - When all entries are files, de-duplicate the content
 
 |      | Before | After |
@@ -30,6 +30,7 @@ I wanted a prettier quickfix window, without any extra features. This plugin doe
 {
   show_line_numbers = true, -- Whether to show line numbers in the quickfix list
   treesitter_highlighting = true, -- Whether to use treesitter for syntax highlighting
+  highlight_matches =  true, -- Whether to highlight the matched text in each entry
   format = 'filepath', -- Display entries with the file name or file path
   files_list_format = 'filepath', -- Same as the above but when all entries are files
 }
